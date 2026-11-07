@@ -1,3 +1,8 @@
+mod lexer;
+
 fn main() {
-    println!("Hello, world!");
+    let mut lx = lexer::Lexer::new("+ --[[ a\nb\nc ]]-- -\n* /");
+    for t in lx.tokenize() {
+        println!("{t:?}",)
+    }
 }
