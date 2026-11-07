@@ -4,7 +4,6 @@
 // Enums
 // ]]
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     Plus,
@@ -12,6 +11,14 @@ pub enum TokenKind {
     Star,
     Slash,
     Eof,
+
+    Equals,
+    EqualsEquals,
+    NotEquals,
+    LesserThan,
+    LesserThanOrEquals,
+    GreaterThan,
+    GreaterThanOrEquals,
 }
 
 //[[
@@ -45,6 +52,13 @@ impl Lexer {
         }
     }
 
+    pub fn panic(&self, c: char) {
+        panic!(
+            "Unexpected Character Found at line: {},  col: {}, Lexer Position : {}, Character: {}",
+            self.line, self.line, self.pos, c
+        );
+    }
+    
     ///Returns current character under the Lexer pointer
     pub fn peek(&self) -> Option<char> {
         self.chars.get(self.pos).copied()
@@ -54,7 +68,7 @@ impl Lexer {
     pub fn peek_at(&self, offset: usize) -> Option<char> {
         self.chars.get(self.pos + offset).copied()
     }
-    
+
     ///Moves the Lexer Pointer forward and updates the current line and col
     pub fn advance(&mut self) -> Option<char> {
         let char_check = self.peek();
@@ -75,7 +89,6 @@ impl Lexer {
             None => None,
         }
     }
-
 
     ///Tokenizes the code
     pub fn tokenize(&mut self) -> Vec<Token> {
@@ -99,13 +112,10 @@ impl Lexer {
                 }
 
                 '-' => {
-
                     //Is it a comment? if not its a minus
                     if self.peek_at(1) == Some('-') {
-
                         //Is it a multiline comment?
                         if self.peek_at(2) == Some('[') && self.peek_at(3) == Some('[') {
-
                             //Consume --[[
                             for _ in 0..4 {
                                 self.advance();
@@ -113,10 +123,10 @@ impl Lexer {
 
                             //Is this the end of multiline?, if not keep going
                             while self.peek().is_some()
-                            && !(self.peek() == Some(']')
-                                && self.peek_at(1) == Some(']')
-                                && self.peek_at(2) == Some('-')
-                                && self.peek_at(3) == Some('-'))
+                                && !(self.peek() == Some(']')
+                                    && self.peek_at(1) == Some(']')
+                                    && self.peek_at(2) == Some('-')
+                                    && self.peek_at(3) == Some('-'))
                             {
                                 self.advance();
                             }
@@ -126,7 +136,6 @@ impl Lexer {
                                 self.advance();
                             }
                         } else {
-                            
                             //Its not multiline, loop until newline or nothing
                             loop {
                                 match self.advance() {
@@ -134,21 +143,20 @@ impl Lexer {
                                         if c == '\n' {
                                             break;
                                         }
-                                    },
-    
+                                    }
+
                                     None => {
                                         break;
                                     }
                                 }
                             }
                         }
-                        
                     } else {
                         //Its not a comment, its a minus sign
                         let line = self.line;
                         let col = self.col;
                         self.advance();
-    
+
                         tokens.push(Token {
                             kind: TokenKind::Minus,
                             line: line,
@@ -181,19 +189,99 @@ impl Lexer {
                     });
                 }
 
+                '=' => {
+                    let mut token = TokenKind::Equals;
+
+                    let line = self.line;
+                    let col = self.col;
+                    self.advance();
+                    
+                    //Is it EqEq(Comparison)
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        token = TokenKind::EqualsEquals;
+                    }
+
+                    tokens.push(Token {
+                        kind: token,
+                        line: line,
+                        col: col,
+                    });
+                }
+
+                '<' => {
+                    let mut token = TokenKind::LesserThan;
+
+                    
+                    let line = self.line;
+                    let col = self.col;
+                    self.advance();
+                    
+                    //Is it LessEq
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        token = TokenKind::LesserThanOrEquals;
+                    }
+
+
+                    tokens.push(Token {
+                        kind: token,
+                        line: line,
+                        col: col,
+                    });
+                }
+
+                '>' => {
+                    let mut token = TokenKind::GreaterThan;
+
+                    let line = self.line;
+                    let col = self.col;
+                    self.advance();
+                    
+                    //Is it EqEq(Comparison)
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        token = TokenKind::GreaterThanOrEquals;
+                    }
+
+                    tokens.push(Token {
+                        kind: token,
+                        line: line,
+                        col: col,
+                    });
+                }
+
+                '!' => {
+                    if self.peek_at(1) == Some('=') {
+                        let line = self.line;
+                        let col = self.col;
+                        self.advance();
+                        self.advance();
+    
+                        tokens.push(Token {
+                            kind: TokenKind::NotEquals,
+                            line: line,
+                            col: col,
+                        });
+                        
+                    } else {
+                        self.panic(c);
+                    }
+                }
+                
                 _ => {
-                    panic!(
-                        "Unexpected Character Found at line: {},  col: {}, Lexer Position : {}, Character: {}",
-                        self.line, self.line, self.pos, c
-                    );
+                    self.panic(c);
                 }
             }
 
             //While End
         }
 
-        tokens.push(Token { 
-            kind: TokenKind::Eof, line: self.line, col: self.col});
+        tokens.push(Token {
+            kind: TokenKind::Eof,
+            line: self.line,
+            col: self.col,
+        });
         tokens
     }
 
