@@ -24,6 +24,8 @@ pub enum TokenKind {
     Float(f64),
     Dot,
     Size(u128),
+
+    Text(String),
 }
 
 //[[
@@ -31,6 +33,7 @@ pub enum TokenKind {
 // ]]
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Token {
     pub kind: TokenKind,
     pub line: usize,
@@ -104,6 +107,7 @@ impl Lexer {
                 ' ' | '\t' | '\r' | '\n' => {
                     self.advance();
                 }
+                
                 '+' => {
                     let line = self.line;
                     let col = self.col;
@@ -339,10 +343,10 @@ impl Lexer {
 
                                 _ => {
                                     let extra = vec!["kb", "gb", "mb"];
-                                    let append = "";
+                                    let mut append = String::new();
                                    
                                     if extra.contains(&suffix.to_lowercase().as_str()) {
-                                        let append = format!(", did you mean {}", suffix.to_lowercase());
+                                        append = format!(", did you mean {}", suffix.to_lowercase());
                                     }
                                     
                                     return Err(LexError { message:
@@ -409,6 +413,65 @@ impl Lexer {
                         kind: TokenKind::Dot,
                         line: line,
                         col: col });
+                }
+
+                '"' => {
+                    let line = self.line;
+                    let col = self.col;
+                    self.advance(); // consume opening quote
+                
+                    let mut text = String::new();
+                
+                    loop {
+                        let current = self.peek();
+                
+                        if current.is_none() || current == Some('\n') {
+                            return Err(LexError {
+                                message: String::from("Unclosed String, did you forget to add '\"' at the end?"),
+                                line,
+                                col,
+                            });
+                        }
+                
+                        let t = current.unwrap();
+                
+                        if t == '"' {
+                            self.advance(); // consume closing quote
+                            break;
+                        } else if t == '\\' {
+                            self.advance(); // consume backslash
+                            let escaped = match self.peek() {
+                                Some(ch) => ch,
+                                None => return Err(LexError {
+                                    message: String::from("Unexpected Character '\\', did you mean '\\n'?"),
+                                    line: self.line,
+                                    col: self.col,
+                                }),
+                            };
+                
+                            match escaped {
+                                'n' => text.push('\n'),
+                                't' => text.push('\t'),
+                                '"' => text.push('"'),
+                                '\\' => text.push('\\'),
+                                _ => return Err(LexError {
+                                    message: format!("Unexpected Character '{escaped}' after \\"),
+                                    line: self.line,
+                                    col: self.col,
+                                }),
+                            }
+                            self.advance(); // consume the escaped character
+                        } else {
+                            text.push(t);
+                            self.advance(); // consume normal character
+                        }
+                    }
+                
+                    tokens.push(Token {
+                        kind: TokenKind::Text(text),
+                        line,
+                        col,
+                    });
                 }
                 
                 _ => {
