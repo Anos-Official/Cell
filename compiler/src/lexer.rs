@@ -21,6 +21,8 @@ pub enum TokenKind {
     GreaterThanOrEquals,
 
     Int(u128),
+    Float(f64),
+    Dot,
 }
 
 //[[
@@ -276,23 +278,59 @@ impl Lexer {
                     let col = self.col;
 
                     let mut digits = String::new();
-
+                    let mut is_decimal = false;
+                    let mut add_dot = false;
+                    
                     while let Some(d) = self.peek() {
-                        if !d.is_ascii_digit() {
+                        if d.is_ascii_digit() {
+                            digits.push(d);
+                            self.advance();
+                        } else if d == '.'
+                            && !is_decimal
+                            && matches!(self.peek_at(1), Some(n) if n.is_ascii_digit())
+                        {
+                            is_decimal = true;
+                            digits.push('.');
+                            self.advance();
+                        } else {
                             break;
                         }
-
-                        digits.push(d);
-                        self.advance();
                     }
-                    
-                    let digit = digits.parse::<u128>().unwrap();
+
+                    if is_decimal {
+                        let decimal = digits.parse::<f64>().unwrap();
+
+                        tokens.push(Token { 
+                            kind: TokenKind::Float(decimal), 
+                            line: line,
+                            col: col });
+                        
+                    } else {
+                        let digit = digits.parse::<u128>().unwrap();
+
+                        tokens.push(Token { 
+                            kind: TokenKind::Int(digit), 
+                            line: line,
+                            col: col });
+                    }
+
+                    if add_dot {
+                        tokens.push(Token { 
+                            kind: TokenKind::Dot,
+                            line: line,
+                            col: col });
+                    }
+                }
+
+                '.' => {
+                    let line = self.line;
+                    let col = self.col;
+                    self.advance();
 
                     tokens.push(Token { 
-                        kind: TokenKind::Int(digit as u128), 
+                        kind: TokenKind::Dot,
                         line: line,
                         col: col });
-    
                 }
                 
                 _ => {
