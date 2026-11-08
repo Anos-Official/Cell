@@ -23,6 +23,7 @@ pub enum TokenKind {
     Int(u128),
     Float(f64),
     Dot,
+    Size(u128),
 }
 
 //[[
@@ -32,6 +33,13 @@ pub enum TokenKind {
 #[derive(Debug)]
 pub struct Token {
     pub kind: TokenKind,
+    pub line: usize,
+    pub col: usize,
+}
+
+#[derive(Debug)]
+pub struct LexError {
+    pub message: String,
     pub line: usize,
     pub col: usize,
 }
@@ -54,13 +62,6 @@ impl Lexer {
             line: 1,
             col: 1,
         }
-    }
-
-    pub fn panic(&self, c: char) {
-        panic!(
-            "Unexpected Character Found at line: {},  col: {}, Lexer Position : {}, Character: {}",
-            self.line, self.line, self.pos, c
-        );
     }
     
     ///Returns current character under the Lexer pointer
@@ -95,7 +96,7 @@ impl Lexer {
     }
 
     ///Tokenizes the code
-    pub fn tokenize(&mut self) -> Vec<Token> {
+    pub fn tokenize(&mut self) -> Result<Vec<Token>, LexError> {
         let mut tokens = Vec::new();
 
         while let Some(c) = self.peek() {
@@ -117,6 +118,10 @@ impl Lexer {
 
                 '-' => {
                     //Is it a comment? if not its a minus
+
+                    let line = self.line;
+                    let col = self.col;
+                    
                     if self.peek_at(1) == Some('-') {
                         //Is it a multiline comment?
                         if self.peek_at(2) == Some('[') && self.peek_at(3) == Some('[') {
@@ -126,15 +131,24 @@ impl Lexer {
                             }
 
                             //Is this the end of multiline?, if not keep going
-                            while self.peek().is_some()
-                                && !(self.peek() == Some(']')
+                            loop {
+                                let current = self.peek();
+
+                                if !current.is_some() {
+                                    return Err(LexError { message: String::from("Unterminated Comment, did you forget to add ']]--'?"),
+                                        line: line, col: col });
+                                } else if self.peek() == Some(']')
                                     && self.peek_at(1) == Some(']')
                                     && self.peek_at(2) == Some('-')
-                                    && self.peek_at(3) == Some('-'))
-                            {
+                                    && self.peek_at(3) == Some('-') {
+                                    break;
+                                }
+
                                 self.advance();
                             }
 
+                            self.advance();
+                            
                             //Consume ]]--
                             for _ in 0..4 {
                                 self.advance();
@@ -157,8 +171,6 @@ impl Lexer {
                         }
                     } else {
                         //Its not a comment, its a minus sign
-                        let line = self.line;
-                        let col = self.col;
                         self.advance();
 
                         tokens.push(Token {
@@ -269,7 +281,10 @@ impl Lexer {
                         });
                         
                     } else {
-                        self.panic(c);
+                        return Err(LexError { 
+                            message: String::from("Unexpected '!', did you mean '!='?"),
+                            line: self.line,
+                            col: self.col });
                     }
                 }
 
@@ -279,7 +294,8 @@ impl Lexer {
 
                     let mut digits = String::new();
                     let mut is_decimal = false;
-                    let mut add_dot = false;
+                    let mut is_size = false;
+                    let mut multiplier = 0;
                     
                     while let Some(d) = self.peek() {
                         if d.is_ascii_digit() {
@@ -292,31 +308,76 @@ impl Lexer {
                             is_decimal = true;
                             digits.push('.');
                             self.advance();
-                        } else {
+                        } else if d.is_ascii_alphabetic() {
+                            let mut suffix = String::from(d);
+                            self.advance();
+
+                            while let Some(ch) = self.peek() {
+                                suffix.push(ch);
+                                self.advance();
+                            }
+
+                            match suffix.as_str() {
+                                "kb" => {
+                                    is_size = true;
+                                    multiplier = 1024;
+                                }
+
+                                "mb" => {
+                                    is_size = true;
+                                    multiplier = 1024 * 1024;
+                                }
+
+                                "gb" => {
+                                    is_size = true;
+                                    multiplier = 1024 * 1024 * 1024;
+                                }
+
+                                _ => {
+                                    return Err(LexError { message:
+                                        format!("Unknown size unit {suffix}"),
+                                        line: self.line, col: self.col });
+                                }
+                            }
+                        }
+                        else {
                             break;
                         }
                     }
 
                     if is_decimal {
-                        let decimal = digits.parse::<f64>().unwrap();
+                        let decimal = digits.parse::<f64>().map_err(|_| LexError{
+                           message: String::from("Number is too large"),
+                           line : line,
+                           col : col
+                        })?;
 
                         tokens.push(Token { 
                             kind: TokenKind::Float(decimal), 
                             line: line,
                             col: col });
                         
-                    } else {
-                        let digit = digits.parse::<u128>().unwrap();
-
+                    } else if is_size {
+                        let digit = digits.parse::<u128>().map_err(|_| LexError{
+                           message: String::from("Number is too large"),
+                           line : line,
+                           col : col
+                        })? * multiplier;
+                        
                         tokens.push(Token { 
-                            kind: TokenKind::Int(digit), 
+                            kind: TokenKind::Size(digit), 
                             line: line,
                             col: col });
-                    }
-
-                    if add_dot {
+                        
+                    } else {
+                        let digit = digits.parse::<u128>().map_err(|_| LexError{
+                           message: String::from("Number is too large"),
+                           line : line,
+                           col : col
+                        })?;
+                        
                         tokens.push(Token { 
-                            kind: TokenKind::Dot,
+                            kind: TokenKind::Int(digit), 
                             line: line,
                             col: col });
                     }
@@ -334,7 +395,11 @@ impl Lexer {
                 }
                 
                 _ => {
-                    self.panic(c);
+                   return Err(LexError{
+                        message: format!("Unexpected Character: {:?}",c),
+                        line: self.line,
+                        col: self.col
+                    });
                 }
             }
 
@@ -346,7 +411,8 @@ impl Lexer {
             line: self.line,
             col: self.col,
         });
-        tokens
+
+        Ok(tokens)
     }
 
     //Impl End
