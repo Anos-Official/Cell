@@ -313,8 +313,12 @@ impl Lexer {
                             self.advance();
 
                             while let Some(ch) = self.peek() {
-                                suffix.push(ch);
-                                self.advance();
+                                if ch.is_ascii_alphabetic() {
+                                        suffix.push(ch);
+                                        self.advance();
+                                    } else {
+                                        break;
+                                    }
                             }
 
                             match suffix.as_str() {
@@ -334,9 +338,16 @@ impl Lexer {
                                 }
 
                                 _ => {
+                                    let extra = vec!["kb", "gb", "mb"];
+                                    let append = "";
+                                   
+                                    if extra.contains(&suffix.to_lowercase().as_str()) {
+                                        let append = format!(", did you mean {}", suffix.to_lowercase());
+                                    }
+                                    
                                     return Err(LexError { message:
-                                        format!("Unknown size unit {suffix}"),
-                                        line: self.line, col: self.col });
+                                        format!("Unknown size unit {suffix}{}", append),
+                                        line: line, col: col });
                                 }
                             }
                         }
@@ -358,11 +369,17 @@ impl Lexer {
                             col: col });
                         
                     } else if is_size {
-                        let digit = digits.parse::<u128>().map_err(|_| LexError{
+                        let base_value = digits.parse::<u128>().map_err(|_| LexError{
                            message: String::from("Number is too large"),
                            line : line,
                            col : col
-                        })? * multiplier;
+                        })? ;
+
+                        let digit = base_value.checked_mul(multiplier).ok_or_else(|| LexError {
+                                    message: String::from("Number is too large"),
+                                    line: line,
+                                    col: col,
+                                })?;
                         
                         tokens.push(Token { 
                             kind: TokenKind::Size(digit), 
