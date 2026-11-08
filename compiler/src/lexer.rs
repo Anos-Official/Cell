@@ -19,6 +19,8 @@ pub enum TokenKind {
     LesserThanOrEquals,
     GreaterThan,
     GreaterThanOrEquals,
+
+    Int(u128),
 }
 
 //[[
@@ -40,7 +42,7 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    ///Creates a new lexer
+    ///Creates a new lexer;
     /// Takes in a Vector containing Characters
     /// The lexer pointer position, line and col
     pub fn new(source: &str) -> Self {
@@ -267,6 +269,30 @@ impl Lexer {
                     } else {
                         self.panic(c);
                     }
+                }
+
+                '0'..='9' => {
+                    let line = self.line;
+                    let col = self.col;
+
+                    let mut digits = String::new();
+
+                    while let Some(d) = self.peek() {
+                        if !d.is_ascii_digit() {
+                            break;
+                        }
+
+                        digits.push(d);
+                        self.advance();
+                    }
+                    
+                    let digit = digits.parse::<u128>().unwrap();
+
+                    tokens.push(Token { 
+                        kind: TokenKind::Int(digit as u128), 
+                        line: line,
+                        col: col });
+    
                 }
                 
                 _ => {
